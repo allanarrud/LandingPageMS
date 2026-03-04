@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Monte Sinai Ervas</title>
+  <style>
+    body { margin:0; font-family: Arial, sans-serif; background:#f6f7f8; color:#111; }
+    header { background:#0f172a; color:#fff; padding:16px; }
+    header .wrap { max-width:1100px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    nav a { color:#cbd5e1; text-decoration:none; margin-left:12px; }
+    nav a:hover { color:#fff; }
+
+    .container { max-width:1100px; margin:18px auto; padding:0 16px; display:grid; grid-template-columns: 1.6fr 1fr; gap:16px; }
+    .card { background:#fff; border-radius:14px; box-shadow:0 8px 20px rgba(0,0,0,.06); padding:14px; }
+    h2 { margin:0 0 10px; font-size:18px; }
+    .muted { color:#64748b; font-size:12px; }
+
+    .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; margin-top:12px; }
+    .product { border:1px solid #e5e7eb; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:10px; }
+    .product .top { display:flex; justify-content:space-between; gap:10px; }
+    .product .name { font-weight:800; }
+    .product .meta { color:#64748b; font-size:12px; }
+
+    .btn { border:0; border-radius:10px; padding:10px 12px; cursor:pointer; font-weight:800; }
+    .btn-add { background:#0ea5e9; color:#fff; }
+    .btn-outline { background:transparent; border:1px solid #e5e7eb; }
+    .btn-danger { background:#ef4444; color:#fff; }
+    .btn-wa { background:#16a34a; color:#fff; width:100%; padding:12px; font-size:14px; }
+    .btn-wa:disabled { opacity:.5; cursor:not-allowed; }
+
+    .cart-item { display:grid; grid-template-columns: 1fr auto; gap:10px; padding:10px 0; border-bottom:1px solid #f1f5f9; }
+    .cart-item:last-child { border-bottom:0; }
+    .qty { display:inline-flex; align-items:center; gap:8px; }
+    .qty button { width:28px; height:28px; border-radius:8px; border:1px solid #e5e7eb; background:#fff; cursor:pointer; }
+    .qty span { min-width:18px; text-align:center; font-weight:800; }
+
+    input, textarea { width:100%; padding:10px 12px; border-radius:10px; border:1px solid #e5e7eb; outline:none; }
+    textarea { min-height:70px; resize:vertical; }
+
+    @media (max-width:920px){ .container{ grid-template-columns:1fr; } .grid{ grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div>
+        <div style="font-weight:900; font-size:18px;">Monte Sinai Ervas</div>
+        <div style="color:#cbd5e1; font-size:12px;">Peça pelo WhatsApp em poucos cliques</div>
+      </div>
+      <nav>
+        <a href="#produtos">Produtos</a>
+        <a href="#carrinho">Carrinho</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="produtos" class="card">
+      <h2>Produtos</h2>
+      <div style="display:flex; gap:10px; margin-top:10px;">
+  <input
+    id="search"
+    placeholder="Buscar por nome ou código…"
+    style="flex:1;"
+  />
+  <button id="btnClearSearch" class="btn btn-outline">Limpar</button>
+</div>
+      <div class="muted">Carregando produtos da planilha…</div>
+      <div id="products" class="grid"></div>
+    </section>
+
+    <aside id="carrinho" class="card">
+      <h2>Carrinho</h2>
+      <div id="cartEmpty" class="muted" style="margin:10px 0;">Seu carrinho está vazio.</div>
+      <div id="cart"></div>
+
+      <div style="margin-top:12px; border-top:1px solid #f1f5f9; padding-top:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong>Total</strong>
+          <strong id="total">R$ 0,00</strong>
+        </div>
+
+        <div style="display:grid; gap:6px; margin-top:10px;">
+          <label class="muted">Nome (opcional)</label>
+          <input id="customerName" placeholder="Ex: Allan" />
+        </div>
+
+        <div style="display:grid; gap:6px; margin-top:10px;">
+          <label class="muted">Observações (opcional)</label>
+          <textarea id="notes" placeholder="Ex: separar em 2 sacos, retirar às 16h..."></textarea>
+        </div>
+
+        <button id="btnWhatsapp" class="btn btn-wa" disabled>Finalizar no WhatsApp</button>
+        <button id="btnClear" class="btn btn-outline" style="margin-top:10px; width:100%;">Limpar carrinho</button>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+  const SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbyyPgdNoojHZb1xMl82edcH-A4hxybQJnkNvAbqXPF4J6kR5YayijbE6xLtiHaEyqbe/exec";
+  const WHATSAPP_NUMBER = "5591981481648";
+
+  let products = [];
+  let filteredProducts = [];
+
+  // Carrinho: key -> item
+  // key para GRANEL: `${id}__${grams}`
+  // key para UN: `${id}`
+  const cart = new Map();
+
+  const fmtBRL = (v) => v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+
+  function calcLineTotal(item) {
+    if (item.type === "GRANEL") {
+      // priceKg: preço por KG, grams: gramas escolhidas
+      return (item.grams / 1000) * item.priceKg;
+    }
+    // UN
+    return item.qty * item.priceKg;
+  }
+
+  function cartTotal() {
+    let t = 0;
+    for (const item of cart.values()) t += calcLineTotal(item);
+    return t;
+  }
+
+  function renderProducts() {
+    const el = document.getElementById("products");
+    const hint = document.querySelector("#produtos .muted");
+    el.innerHTML = "";
+
+    if (!products.length) {
+      hint.textContent = "Nenhum produto encontrado na planilha.";
+      return;
+    }
+
+    hint.textContent = "Selecione os itens para montar seu pedido.";
+
+    filteredProducts.forEach((p) => {
+      const card = document.createElement("div");
+      card.className = "product";
+
+      const isGranel = String(p.type || "").toUpperCase() === "GRANEL";
+
+      card.innerHTML = `
+        <div class="top">
+          <div>
+            <div class="name">${p.name}</div>
+            <div class="meta">${p.id} • ${isGranel ? "a granel (preço por KG)" : "unidade"}</div>
+          </div>
+          <div style="font-weight:900;">${fmtBRL(p.priceKg)}${isGranel ? " /kg" : ""}</div>
+        </div>
+
+        ${isGranel ? `
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value="100"
+              style="flex:1;"
+              id="g_${p.id}"
+              placeholder="Gramas (ex: 250)"
+            />
+            <button class="btn btn-add" data-type="granel" data-id="${p.id}">
+              Adicionar
+            </button>
+          </div>
+          <div class="muted">Ex: 100g, 250g, 500g…</div>
+        ` : `
+          <button class="btn btn-add" data-type="un" data-id="${p.id}">
+            Adicionar
+          </button>
+        `}
+      `;
+
+      el.appendChild(card);
+    });
+
+    el.querySelectorAll("button[data-id]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        const type = btn.dataset.type;
+        if (type === "granel") addGranel(id);
+        else addUn(id);
+      });
+    });
+  }
+
+  function renderCart() {
+    const cartEl = document.getElementById("cart");
+    const emptyEl = document.getElementById("cartEmpty");
+    const totalEl = document.getElementById("total");
+    const btnWA = document.getElementById("btnWhatsapp");
+
+    cartEl.innerHTML = "";
+
+    if (cart.size === 0) {
+      emptyEl.style.display = "block";
+      btnWA.disabled = true;
+    } else {
+      emptyEl.style.display = "none";
+      btnWA.disabled = false;
+
+      for (const [key, item] of cart.entries()) {
+        const lineTotal = calcLineTotal(item);
+
+        const title = item.type === "GRANEL"
+          ? `${item.name} — ${item.grams}g`
+          : `${item.name}`;
+
+        const subtitle = item.type === "GRANEL"
+          ? `${item.id} • ${fmtBRL(item.priceKg)} /kg`
+          : `${item.id} • ${fmtBRL(item.priceKg)} cada`;
+
+        const controls = item.type === "GRANEL"
+          ? `
+            <div class="qty">
+              <button data-a="gdec" data-k="${key}">-</button>
+              <span>${item.grams}g</span>
+              <button data-a="ginc" data-k="${key}">+</button>
+            </div>
+            <div class="muted">+/- muda 50g</div>
+          `
+          : `
+            <div class="qty">
+              <button data-a="dec" data-k="${key}">-</button>
+              <span>${item.qty}</span>
+              <button data-a="inc" data-k="${key}">+</button>
+            </div>
+          `;
+
+        const row = document.createElement("div");
+        row.className = "cart-item";
+        row.innerHTML = `
+          <div>
+            <div style="font-weight:900;">${title}</div>
+            <div class="muted">${subtitle}</div>
+            <div class="muted">Subtotal: <strong>${fmtBRL(lineTotal)}</strong></div>
+          </div>
+          <div style="display:grid; gap:8px; justify-items:end;">
+            ${controls}
+            <button class="btn btn-danger" style="padding:8px 10px;" data-a="rm" data-k="${key}">Remover</button>
+          </div>
+        `;
+        cartEl.appendChild(row);
+      }
+
+      cartEl.querySelectorAll("button[data-a]").forEach(btn => {
+        const a = btn.dataset.a;
+        const key = btn.dataset.k;
+
+        btn.addEventListener("click", () => {
+          const item = cart.get(key);
+          if (!item) return;
+
+          if (a === "rm") {
+            cart.delete(key);
+            renderCart();
+            return;
+          }
+
+          if (item.type === "UN") {
+            if (a === "inc") item.qty += 1;
+            if (a === "dec") item.qty -= 1;
+            if (item.qty <= 0) cart.delete(key);
+          } else {
+            // GRANEL: incrementa/decrementa 50g
+            const step = 50;
+            if (a === "ginc") item.grams += step;
+            if (a === "gdec") item.grams -= step;
+            if (item.grams <= 0) cart.delete(key);
+          }
+
+          renderCart();
+        });
+      });
+    }
+
+    totalEl.textContent = fmtBRL(cartTotal());
+  }
+
+  function addUn(id) {
+    const p = products.find(x => x.id === id);
+    if (!p) return;
+
+    const key = id;
+    const existing = cart.get(key);
+    if (existing) existing.qty += 1;
+    else cart.set(key, { ...p, type: "UN", qty: 1 });
+
+    renderCart();
+  }
+
+  function addGranel(id) {
+    const p = products.find(x => x.id === id);
+    if (!p) return;
+
+    const input = document.getElementById(`g_${id}`);
+    const grams = Math.max(1, Number(input?.value || 0));
+
+    // Cada gramagem vira um item separado no carrinho
+    const key = `${id}__${grams}`;
+    const existing = cart.get(key);
+
+    if (existing) {
+      // se clicar de novo com a mesma gramagem, soma +50g (pra ficar útil)
+      existing.grams += 50;
+    } else {
+      cart.set(key, { ...p, type: "GRANEL", grams });
+    }
+
+    renderCart();
+  }
+
+  function buildMessage() {
+    const name = document.getElementById("customerName").value.trim();
+    const notes = document.getElementById("notes").value.trim();
+
+    const lines = [];
+    lines.push("Olá! Gostaria de fazer um pedido na *Monte Sinai Ervas* ✅");
+    if (name) lines.push(`\n*Cliente:* ${name}`);
+
+    lines.push("\n*Itens:*");
+    for (const item of cart.values()) {
+      const lineTotal = calcLineTotal(item);
+
+      if (item.type === "GRANEL") {
+        lines.push(`- ${item.name} (${item.id}) — *${item.grams}g* — ${fmtBRL(lineTotal)}`);
+      } else {
+        lines.push(`- ${item.qty}x ${item.name} (${item.id}) — ${fmtBRL(lineTotal)}`);
+      }
+    }
+
+    lines.push(`\n*Total:* ${fmtBRL(cartTotal())}`);
+    if (notes) lines.push(`\n*Observações:* ${notes}`);
+    lines.push("\nPode confirmar disponibilidade e prazo? Obrigado!");
+    return lines.join("\n");
+  }
+
+ function openWhatsApp() {
+  const msg = encodeURIComponent(buildMessage());
+
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  let url;
+
+  if (isMobile) {
+    // Celular → abre app
+    url = `https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`;
+  } else {
+    // Desktop → abre WhatsApp Web
+    url = `https://web.whatsapp.com/send?phone=${WHATSAPP_NUMBER}&text=${msg}`;
+  }
+
+  window.open(url, "_blank");
+}
+
+  async function loadProducts() {
+    try {
+      // força sempre buscar atualizado
+      const res = await fetch(`${SHEETS_API_URL}?v=${Date.now()}`);
+      const data = await res.json();
+
+      // normaliza type (GRANEL/UN)
+      products = data.map(p => ({
+        id: String(p.id || "").trim(),
+        name: String(p.name || "").trim(),
+        priceKg: Number(p.priceKg ?? p.price ?? 0) || 0,
+        type: String(p.type || "UN").trim().toUpperCase()
+      }));
+
+      filteredProducts = [...products];
+
+      renderProducts();
+    } catch (e) {
+      document.querySelector("#produtos .muted").textContent =
+        "Erro ao carregar produtos. Verifique a URL do Apps Script (/exec) e o acesso público.";
+      console.error(e);
+    }
+  }
+
+  document.getElementById("btnWhatsapp").addEventListener("click", () => {
+    if (SHEETS_API_URL.includes("COLE_AQUI") || WHATSAPP_NUMBER.includes("X")) {
+      alert("Configure SHEETS_API_URL e WHATSAPP_NUMBER no código.");
+      return;
+    }
+    openWhatsApp();
+  });
+
+  document.getElementById("btnClear").addEventListener("click", () => {
+    cart.clear();
+    renderCart();
+  });
+
+  // ===== BUSCA =====
+const searchInput = document.getElementById("search");
+const btnClearSearch = document.getElementById("btnClearSearch");
+
+function applySearch() {
+  const q = (searchInput.value || "").trim().toLowerCase();
+
+  if (!q) {
+    filteredProducts = [...products];
+  } else {
+    filteredProducts = products.filter(p => {
+      const name = (p.name || "").toLowerCase();
+      const id = (p.id || "").toLowerCase();
+      return name.includes(q) || id.includes(q);
+    });
+  }
+
+  renderProducts();
+}
+
+searchInput.addEventListener("input", applySearch);
+
+btnClearSearch.addEventListener("click", () => {
+  searchInput.value = "";
+  filteredProducts = [...products];
+  renderProducts();
+});
+
+  renderCart();
+  loadProducts();
+</script>
+</body>
+</html>
