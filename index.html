@@ -461,6 +461,53 @@
     text-align:left;
   }
 }
+
+/* MOBILE: não fixa altura/sticky do carrinho (evita cortar o botão) */
+@media (max-width: 980px){
+  .sticky{
+    position: static;
+    top: auto;
+    height: auto;
+    display: block;
+  }
+
+  #cart{
+    overflow: visible;
+    max-height: none;
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 980px){
+  .cartFooter{
+    position: sticky;
+    bottom: 0;
+    padding-bottom: 12px;
+    border-top: 1px solid rgba(255,255,255,.12);
+  }
+
+  #btnWhatsapp{
+    position: sticky;
+    bottom: 10px;
+  }
+}
+
+@media (max-width: 980px){
+  .floatingCart{
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    border-radius: 16px;
+    padding: 14px 14px;
+    font-size: 14px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  }
+
+  /* evita o botão cobrir o conteúdo no final da página */
+  body{
+    padding-bottom: 84px;
+  }
+}
 </style>
 </head>
 <body>
@@ -490,13 +537,13 @@
   <div>
     <h2>Monte seu pedido online</h2>
     <div class="sub">
-      Selecione itens por unidade ou a granel (gramas). Ao finalizar, o pedido vai direto pro WhatsApp.
+      Selecione seus itens. Ao finalizar, o pedido vai direto pro WhatsApp.
     </div>
     <div class="pillrow">
-      <div class="pill">✅ Atualiza pela planilha</div>
-      <div class="pill">⚖️ Granel por gramas</div>
-      <div class="pill">📦 Unidade</div>
-      <div class="pill">💬 WhatsApp</div>
+      <div class="pill">🌿 Ervas</div>
+      <div class="pill">🧄 Temperos</div>
+      <div class="pill">💲 Preço Baixo</div>
+      <div class="pill">✅ Qualidade</div>
     </div>
   </div>
 </section>
@@ -601,7 +648,7 @@
         <div class="top">
           <div>
             <div class="name">${p.name}</div>
-            <div class="meta">${p.id} • ${isGranel ? "a granel (preço por KG)" : "unidade"}</div>
+            <div class="meta">${p.id} • ${isGranel ? "a granel" : "unidade"}</div>
           </div>
           <div style="font-weight:900;">${fmtBRL(p.priceKg)}${isGranel ? " /kg" : ""}</div>
         </div>
@@ -643,10 +690,9 @@
   }
 function updateFloatingButton() {
   const floating = document.getElementById("floatingCart");
-  const floatingCount = document.getElementById("floatingCartCount");
   const floatingTotal = document.getElementById("floatingCartTotal");
 
-  if (!floating || !floatingCount || !floatingTotal) return;
+  if (!floating || !floatingTotal) return;
 
   // esconder no desktop
   if (window.innerWidth > 980) {
@@ -654,22 +700,10 @@ function updateFloatingButton() {
     return;
   }
 
-  let count = 0;
-
-  for (const item of cart.values()) {
-    if (item.type === "UN") {
-      count += item.qty || 1;
-    } else {
-      count += 1;
-    }
-  }
-
   const totalValue = cartTotal();
 
-  floatingCount.textContent = count;
   floatingTotal.textContent = fmtBRL(totalValue);
-
-  floating.style.display = count > 0 ? "block" : "none";
+  floating.style.display = totalValue > 0 ? "block" : "none";
 }
   function renderCart() {
     const cartEl = document.getElementById("cart");
@@ -881,11 +915,18 @@ function updateFloatingButton() {
     renderCart();
   });
 
-document.getElementById("floatingCart")?.addEventListener("click", () => {
-  document.getElementById("carrinho").scrollIntoView({
+const floatingCartBtn = document.getElementById("floatingCart");
+
+floatingCartBtn?.addEventListener("click", () => {
+  const cartSection = document.getElementById("carrinho");
+  if (!cartSection) return;
+
+  const y = cartSection.getBoundingClientRect().top + window.pageYOffset - 80;
+
+  window.scrollTo({
+    top: y,
     behavior: "smooth"
   });
-  window.addEventListener("resize", updateFloatingButton);
 });
 
 const menuBtn = document.getElementById("menuBtn");
@@ -938,7 +979,7 @@ btnClearSearch.addEventListener("click", () => {
   loadProducts();
 </script>
 <button id="floatingCart" class="floatingCart" type="button">
-  🛒 <span id="floatingCartCount">0</span> • <span id="floatingCartTotal">R$ 0,00</span>
+  🛒 Ver carrinho • <span id="floatingCartTotal">R$ 0,00</span>
 </button>
 </body>
 </html>
