@@ -179,6 +179,35 @@
     gap: 10px;
     margin-top: 12px;
   }
+
+  .categoryFilters{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+
+.categoryBtn{
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  padding:8px 12px;
+  border-radius:999px;
+  cursor:pointer;
+  font-size:13px;
+  font-weight:700;
+  transition: .15s ease;
+}
+
+.categoryBtn:hover{
+  background: rgba(255,255,255,.08);
+}
+
+.categoryBtn.active{
+  background: linear-gradient(135deg,#22c55e,#16a34a);
+  border-color: transparent;
+  color: white;
+}
   input, textarea{
     width: 100%;
     padding: 11px 12px;
@@ -373,6 +402,8 @@
   cursor: pointer;
 
   transition: transform .12s ease, filter .12s ease;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .floatingCart:hover{
@@ -562,6 +593,8 @@
       <button id="btnClearSearch" class="btn btn-outline">Limpar</button>
     </div>
 
+    <div id="categoryFilters" class="categoryFilters"></div>
+
     <div class="muted" style="margin-top:10px;">Carregando produtos da planilha…</div>
   </div>
 
@@ -599,10 +632,11 @@
 
   <script>
   const SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbyyPgdNoojHZb1xMl82edcH-A4hxybQJnkNvAbqXPF4J6kR5YayijbE6xLtiHaEyqbe/exec";
-  const WHATSAPP_NUMBER = "5591988028298";
+  const WHATSAPP_NUMBER = "5591992945159";
 
   let products = [];
   let filteredProducts = [];
+  let selectedCategory = "Todos";
 
   // Carrinho: key -> item
   // key para GRANEL: `${id}__${grams}`
@@ -625,6 +659,37 @@
     for (const item of cart.values()) t += calcLineTotal(item);
     return t;
   }
+
+  function renderCategoryFilters() {
+   const container = document.getElementById("categoryFilters");
+   if (!container) return;
+
+   const categories = [...new Set(
+    products
+      .map(p => (p.category || "").trim())
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b));
+
+  const allCategories = ["Todos", ...categories];
+
+  container.innerHTML = allCategories.map(cat => `
+    <button
+      class="categoryBtn ${selectedCategory === cat ? "active" : ""}"
+      data-category="${cat}"
+      type="button"
+    >
+      ${cat}
+    </button>
+  `).join("");
+
+  container.querySelectorAll(".categoryBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      selectedCategory = btn.dataset.category;
+     applyFilters();
+     renderCategoryFilters();
+    });
+  });
+}
 
   function renderProducts() {
     const el = document.getElementById("products");
@@ -884,17 +949,19 @@ function updateFloatingButton() {
       // normaliza type (GRANEL/UN)
       products = data.map(p => ({
         id: String(p.id || "").trim(),
-        name: String(p.name || "").trim(),
+       name: String(p.name || "").trim(),
+       category: String(p.category || "").trim(),
         priceKg: Number(p.priceKg ?? p.price ?? 0) || 0,
-        type: String(p.type || "UN").trim().toUpperCase()
-      }));
+       type: String(p.type || "UN").trim().toUpperCase()
+}));
 
       // ordena alfabeticamente
       products.sort((a, b) => a.name.localeCompare(b.name));
 
       filteredProducts = [...products];
-
+      renderCategoryFilters();
       renderProducts();
+      updateFloatingButton();
     } catch (e) {
       document.querySelector("#produtos .muted").textContent =
         "Erro ao carregar produtos. Verifique a URL do Apps Script (/exec) e o acesso público.";
@@ -915,18 +982,20 @@ function updateFloatingButton() {
     renderCart();
   });
 
-const floatingCartBtn = document.getElementById("floatingCart");
+window.addEventListener("DOMContentLoaded", () => {
+  const floatingCartBtn = document.getElementById("floatingCart");
 
-floatingCartBtn?.addEventListener("click", () => {
-  const cartSection = document.getElementById("carrinho");
-  if (!cartSection) return;
+  if (floatingCartBtn) {
+    floatingCartBtn.addEventListener("click", () => {
+      const cartSection = document.getElementById("carrinho");
+      if (!cartSection) return;
 
-  const y = cartSection.getBoundingClientRect().top + window.pageYOffset - 80;
-
-  window.scrollTo({
-    top: y,
-    behavior: "smooth"
-  });
+      cartSection.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    });
+  }
 });
 
 const menuBtn = document.getElementById("menuBtn");
@@ -951,28 +1020,33 @@ document.addEventListener("click", (e) => {
 const searchInput = document.getElementById("search");
 const btnClearSearch = document.getElementById("btnClearSearch");
 
-function applySearch() {
-  const q = (searchInput.value || "").trim().toLowerCase();
+function applyFilters() {
+  const searchInput = document.getElementById("search");
+  const q = (searchInput?.value || "").trim().toLowerCase();
 
-  if (!q) {
-    filteredProducts = [...products];
-  } else {
-    filteredProducts = products.filter(p => {
-      const name = (p.name || "").toLowerCase();
-      const id = (p.id || "").toLowerCase();
-      return name.includes(q) || id.includes(q);
-    });
-  }
+  filteredProducts = products.filter(p => {
+    const matchesSearch =
+      !q ||
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.id || "").toLowerCase().includes(q);
+
+    const matchesCategory =
+      selectedCategory === "Todos" ||
+      (p.category || "").trim() === selectedCategory;
+
+    return matchesSearch && matchesCategory;
+  });
 
   renderProducts();
 }
 
-searchInput.addEventListener("input", applySearch);
+searchInput.addEventListener("input", applyFilters);
 
 btnClearSearch.addEventListener("click", () => {
   searchInput.value = "";
-  filteredProducts = [...products];
-  renderProducts();
+  selectedCategory = "Todos";
+  applyFilters();
+  renderCategoryFilters();
 });
 
   renderCart();
